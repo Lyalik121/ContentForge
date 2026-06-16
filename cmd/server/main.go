@@ -9,5 +9,9 @@ func main() {
 		return c.SendString("OK")
 	})
 
+	app.Post("/echo", func(c *fiber.Ctx) error {
+		return c.Send(c.Body())
+	})
+
 	app.Listen(":3000")
 }
