@@ -1,0 +1,4 @@
+-- ContentForge database schema
+-- TODO (Mykhailo): define tables and the status lifecycle
+-- Tables: users, media_files, transcripts, generated_content, generation_requests
+-- media_files.status: Uploaded -> Transcribing -> Transcribed -> Generating -> Completed / Failed
