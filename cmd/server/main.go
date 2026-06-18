@@ -5,21 +5,21 @@ import (
 	"log"
 
 	"contentforge/db"
+	"contentforge/handlers"
+	"contentforge/middleware"
 
 	"github.com/gofiber/fiber/v2"
 )
 
 func main() {
-	// 1. Підключаємося до бази даних MS SQL
 	database := db.ConnectDB()
 	defer database.Close()
 
-	// 2. Ініціалізуємо веб-сервер Fiber
 	app := fiber.New()
 
-	// 3. Головна сторінка з примусовим кодуванням UTF-8
+	authHandler := handlers.NewAuthHandler(database)
+
 	app.Get("/", func(c *fiber.Ctx) error {
-		// Кажемо браузеру читати текст як UTF-8, щоб прибрати "кракозябри"
 		c.Set("Content-Type", "text/html; charset=utf-8")
 
 		return c.SendString(`
@@ -31,17 +31,32 @@ func main() {
 		`)
 	})
 
-	// 4. Роут перевірки здоров'я додатка
 	app.Get("/health", func(c *fiber.Ctx) error {
 		return c.SendString("OK")
 	})
 
-	// 5. Тестовий ехо-роут
 	app.Post("/echo", func(c *fiber.Ctx) error {
 		return c.Send(c.Body())
 	})
 
-	// 6. Старт сервера
+	auth := app.Group("/api/auth")
+	auth.Post("/register", authHandler.Register)
+	auth.Post("/login", authHandler.Login)
+
+	api := app.Group("/api")
+
+	api.Get("/profile", middleware.Protected(), func(c *fiber.Ctx) error {
+		userID := c.Locals("user_id")
+		email := c.Locals("email")
+
+		return c.JSON(fiber.Map{
+			"status":  "success",
+			"message": "Ви успішно увійшли в захищену зону!",
+			"user_id": userID,
+			"email":   email,
+		})
+	})
+
 	fmt.Println("Сервер Fiber запускається на порту :3000...")
 	log.Fatal(app.Listen(":3000"))
 }
