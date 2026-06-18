@@ -33,7 +33,7 @@ func ConnectDB() *sql.DB {
 	connString := fmt.Sprintf("server=%s;user id=%s;password=%s;port=%s;database=%s;encrypt=disable",
 		host, user, password, port, dbname)
 
-	db, err := sql.Open("mssql", connString)
+	db, err := sql.Open("sqlserver", connString)
 	if err != nil {
 		log.Fatal("Помилка під час налаштування підключення:", err)
 	}
