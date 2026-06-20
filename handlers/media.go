@@ -57,7 +57,6 @@ func (h *MediaHandler) Upload(c *fiber.Ctx) error {
 		})
 	}
 	contentType := http.DetectContentType(headBytes[:n])
-
 	if !strings.HasPrefix(contentType, "audio/") && !strings.HasPrefix(contentType, "video/") {
 		return c.Status(fiber.StatusUnsupportedMediaType).JSON(fiber.Map{
 			"status":        "error",
@@ -101,9 +100,34 @@ func (h *MediaHandler) Upload(c *fiber.Ctx) error {
 		})
 	}
 
+	userIDFloat, ok := c.Locals("user_id").(float64)
+	if !ok {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Invalid user identity in token.",
+		})
+	}
+	userID := int(userIDFloat)
+
+	query := `INSERT INTO media_files (user_id, file_name, file_path, status)
+	          OUTPUT INSERTED.id
+	          VALUES (@p1, @p2, @p3, @p4)`
+
+	var mediaID int
+	err = h.db.QueryRow(query, userID, fileHeader.Filename, destPath, "Uploaded").Scan(&mediaID)
+	if err != nil {
+
+		os.Remove(destPath)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Could not save file record to database.",
+		})
+	}
+
 	return c.JSON(fiber.Map{
 		"status":        "success",
 		"message":       "File uploaded",
+		"media_id":      mediaID,
 		"filename":      fileHeader.Filename,
 		"saved_as":      newName,
 		"size":          fileHeader.Size,
