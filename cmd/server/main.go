@@ -15,9 +15,12 @@ func main() {
 	database := db.ConnectDB()
 	defer database.Close()
 
-	app := fiber.New()
+	app := fiber.New(fiber.Config{
+		BodyLimit: 500 * 1024 * 1024, // 500 MB
+	})
 
 	authHandler := handlers.NewAuthHandler(database)
+	mediaHandler := handlers.NewMediaHandler(database)
 
 	app.Get("/", func(c *fiber.Ctx) error {
 		c.Set("Content-Type", "text/html; charset=utf-8")
@@ -42,6 +45,9 @@ func main() {
 	auth := app.Group("/api/auth")
 	auth.Post("/register", authHandler.Register)
 	auth.Post("/login", authHandler.Login)
+
+	media := app.Group("/api/media")
+	media.Post("/upload", middleware.Protected(), mediaHandler.Upload)
 
 	api := app.Group("/api")
 

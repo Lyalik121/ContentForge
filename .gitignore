@@ -35,3 +35,6 @@ go.work.sum
 
 # Docker image exports
 *.tar
+
+# Uploads files
+uploads/
