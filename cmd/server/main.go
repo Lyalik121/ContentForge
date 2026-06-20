@@ -48,7 +48,7 @@ func main() {
 
 	media := app.Group("/api/media")
 	media.Post("/upload", middleware.Protected(), mediaHandler.Upload)
-
+	media.Get("/:id/status", middleware.Protected(), mediaHandler.GetStatus)
 	api := app.Group("/api")
 
 	api.Get("/profile", middleware.Protected(), func(c *fiber.Ctx) error {

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
@@ -132,5 +133,38 @@ func (h *MediaHandler) Upload(c *fiber.Ctx) error {
 		"saved_as":      newName,
 		"size":          fileHeader.Size,
 		"detected_type": contentType,
+	})
+}
+
+func (h *MediaHandler) GetStatus(c *fiber.Ctx) error {
+
+	id, err := strconv.Atoi(c.Params("id"))
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Invalid media ID.",
+		})
+	}
+
+	var mediaStatus string
+	query := `SELECT status FROM media_files WHERE id = @p1`
+	err = h.db.QueryRow(query, id).Scan(&mediaStatus)
+
+	if err == sql.ErrNoRows {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Media file not found.",
+		})
+	} else if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Could not retrieve status.",
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"status":       "success",
+		"media_id":     id,
+		"media_status": mediaStatus,
 	})
 }
