@@ -180,9 +180,7 @@ func (h *MediaHandler) updateStatus(mediaID int, status string) error {
 }
 
 func (h *MediaHandler) processMedia(mediaID int) {
-	// Симуляція довгої обробки. Реальні Whisper/Gemini прийдуть у Пунктах 10-11.
-	// time.Sleep вдає роботу, яка в житті триватиме хвилини.
-
+	
 	time.Sleep(3 * time.Second)
 	if err := h.updateStatus(mediaID, "Transcribing"); err != nil {
 		log.Printf("media %d: failed to set Transcribing: %v", mediaID, err)
