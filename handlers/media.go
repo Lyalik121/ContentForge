@@ -3,11 +3,13 @@ package handlers
 import (
 	"database/sql"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
@@ -125,6 +127,8 @@ func (h *MediaHandler) Upload(c *fiber.Ctx) error {
 		})
 	}
 
+	go h.processMedia(mediaID)
+
 	return c.JSON(fiber.Map{
 		"status":        "success",
 		"message":       "File uploaded",
@@ -167,4 +171,41 @@ func (h *MediaHandler) GetStatus(c *fiber.Ctx) error {
 		"media_id":     id,
 		"media_status": mediaStatus,
 	})
+}
+
+func (h *MediaHandler) updateStatus(mediaID int, status string) error {
+	query := `UPDATE media_files SET status = @p1 WHERE id = @p2`
+	_, err := h.db.Exec(query, status, mediaID)
+	return err
+}
+
+func (h *MediaHandler) processMedia(mediaID int) {
+	// Симуляція довгої обробки. Реальні Whisper/Gemini прийдуть у Пунктах 10-11.
+	// time.Sleep вдає роботу, яка в житті триватиме хвилини.
+
+	time.Sleep(3 * time.Second)
+	if err := h.updateStatus(mediaID, "Transcribing"); err != nil {
+		log.Printf("media %d: failed to set Transcribing: %v", mediaID, err)
+		return
+	}
+
+	time.Sleep(3 * time.Second)
+	if err := h.updateStatus(mediaID, "Transcribed"); err != nil {
+		log.Printf("media %d: failed to set Transcribed: %v", mediaID, err)
+		return
+	}
+
+	time.Sleep(3 * time.Second)
+	if err := h.updateStatus(mediaID, "Generating"); err != nil {
+		log.Printf("media %d: failed to set Generating: %v", mediaID, err)
+		return
+	}
+
+	time.Sleep(3 * time.Second)
+	if err := h.updateStatus(mediaID, "Completed"); err != nil {
+		log.Printf("media %d: failed to set Completed: %v", mediaID, err)
+		return
+	}
+
+	log.Printf("media %d: processing completed", mediaID)
 }
