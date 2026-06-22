@@ -3,10 +3,13 @@ package handlers
 import (
 	"database/sql"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
@@ -124,6 +127,8 @@ func (h *MediaHandler) Upload(c *fiber.Ctx) error {
 		})
 	}
 
+	go h.processMedia(mediaID)
+
 	return c.JSON(fiber.Map{
 		"status":        "success",
 		"message":       "File uploaded",
@@ -133,4 +138,72 @@ func (h *MediaHandler) Upload(c *fiber.Ctx) error {
 		"size":          fileHeader.Size,
 		"detected_type": contentType,
 	})
+}
+
+func (h *MediaHandler) GetStatus(c *fiber.Ctx) error {
+
+	id, err := strconv.Atoi(c.Params("id"))
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Invalid media ID.",
+		})
+	}
+
+	var mediaStatus string
+	query := `SELECT status FROM media_files WHERE id = @p1`
+	err = h.db.QueryRow(query, id).Scan(&mediaStatus)
+
+	if err == sql.ErrNoRows {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Media file not found.",
+		})
+	} else if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Could not retrieve status.",
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"status":       "success",
+		"media_id":     id,
+		"media_status": mediaStatus,
+	})
+}
+
+func (h *MediaHandler) updateStatus(mediaID int, status string) error {
+	query := `UPDATE media_files SET status = @p1 WHERE id = @p2`
+	_, err := h.db.Exec(query, status, mediaID)
+	return err
+}
+
+func (h *MediaHandler) processMedia(mediaID int) {
+	
+	time.Sleep(3 * time.Second)
+	if err := h.updateStatus(mediaID, "Transcribing"); err != nil {
+		log.Printf("media %d: failed to set Transcribing: %v", mediaID, err)
+		return
+	}
+
+	time.Sleep(3 * time.Second)
+	if err := h.updateStatus(mediaID, "Transcribed"); err != nil {
+		log.Printf("media %d: failed to set Transcribed: %v", mediaID, err)
+		return
+	}
+
+	time.Sleep(3 * time.Second)
+	if err := h.updateStatus(mediaID, "Generating"); err != nil {
+		log.Printf("media %d: failed to set Generating: %v", mediaID, err)
+		return
+	}
+
+	time.Sleep(3 * time.Second)
+	if err := h.updateStatus(mediaID, "Completed"); err != nil {
+		log.Printf("media %d: failed to set Completed: %v", mediaID, err)
+		return
+	}
+
+	log.Printf("media %d: processing completed", mediaID)
 }
