@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"database/sql"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -9,7 +10,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
+
+	"contentforge/pkg/processor"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
@@ -26,7 +28,6 @@ func NewMediaHandler(database *sql.DB) *MediaHandler {
 }
 
 func (h *MediaHandler) Upload(c *fiber.Ctx) error {
-
 	fileHeader, err := c.FormFile("file")
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
@@ -113,13 +114,12 @@ func (h *MediaHandler) Upload(c *fiber.Ctx) error {
 	userID := int(userIDFloat)
 
 	query := `INSERT INTO media_files (user_id, file_name, file_path, status)
-	          OUTPUT INSERTED.id
-	          VALUES (@p1, @p2, @p3, @p4)`
+			  OUTPUT INSERTED.id
+			  VALUES (@p1, @p2, @p3, @p4)`
 
 	var mediaID int
 	err = h.db.QueryRow(query, userID, fileHeader.Filename, destPath, "Uploaded").Scan(&mediaID)
 	if err != nil {
-
 		os.Remove(destPath)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"status":  "error",
@@ -131,7 +131,7 @@ func (h *MediaHandler) Upload(c *fiber.Ctx) error {
 
 	return c.JSON(fiber.Map{
 		"status":        "success",
-		"message":       "File uploaded",
+		"message":       "File uploaded, processing started",
 		"media_id":      mediaID,
 		"filename":      fileHeader.Filename,
 		"saved_as":      newName,
@@ -141,7 +141,6 @@ func (h *MediaHandler) Upload(c *fiber.Ctx) error {
 }
 
 func (h *MediaHandler) GetStatus(c *fiber.Ctx) error {
-
 	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
@@ -180,30 +179,57 @@ func (h *MediaHandler) updateStatus(mediaID int, status string) error {
 }
 
 func (h *MediaHandler) processMedia(mediaID int) {
-	
-	time.Sleep(3 * time.Second)
+	log.Printf("media %d: початковий запуск обробки", mediaID)
+
+	var videoPath string
+	err := h.db.QueryRow("SELECT file_path FROM media_files WHERE id = @p1", mediaID).Scan(&videoPath)
+	if err != nil {
+		log.Printf("media %d: не вдалося знайти шлях до файлу в БД: %v", mediaID, err)
+		_ = h.updateStatus(mediaID, "Failed")
+		return
+	}
+
+	audioOutputDir := "uploads"
+	audioPath := filepath.Join(audioOutputDir, fmt.Sprintf("audio_%d.mp3", mediaID))
+
+	err = processor.ExtractAudio(videoPath, audioPath)
+	if err != nil {
+		log.Printf("media %d: помилка FFmpeg під час витягування звуку: %v", mediaID, err)
+		_ = h.updateStatus(mediaID, "Failed")
+		return
+	}
+
+	log.Printf("media %d: звук успішно витягнуто в %s", mediaID, audioPath)
+
+	fileInfo, err := os.Stat(audioPath)
+	if err != nil {
+		log.Printf("media %d: не вдалося прочитати розмір аудіофайлу: %v", mediaID, err)
+		_ = h.updateStatus(mediaID, "Failed")
+		return
+	}
+
+	const maxAudioSize = 20 * 1024 * 1024
+
+	if fileInfo.Size() > maxAudioSize {
+		log.Printf("media %d: аудіофайл більше 20МБ (%d байт). Запускаємо чанкінг...", mediaID, fileInfo.Size())
+
+		chunksDir := filepath.Join(audioOutputDir, fmt.Sprintf("chunks_%d", mediaID))
+		_ = os.MkdirAll(chunksDir, 0755)
+
+		chunks, err := processor.SplitAudio(audioPath, chunksDir)
+		if err != nil {
+			log.Printf("media %d: помилка під час нарізки файлу: %v", mediaID, err)
+			_ = h.updateStatus(mediaID, "Failed")
+			return
+		}
+
+		log.Printf("media %d: успішно нарізано на %d шматків: %v", mediaID, len(chunks), chunks)
+	}
+
 	if err := h.updateStatus(mediaID, "Transcribing"); err != nil {
-		log.Printf("media %d: failed to set Transcribing: %v", mediaID, err)
+		log.Printf("media %d: не вдалося встановити статус Transcribing: %v", mediaID, err)
 		return
 	}
 
-	time.Sleep(3 * time.Second)
-	if err := h.updateStatus(mediaID, "Transcribed"); err != nil {
-		log.Printf("media %d: failed to set Transcribed: %v", mediaID, err)
-		return
-	}
-
-	time.Sleep(3 * time.Second)
-	if err := h.updateStatus(mediaID, "Generating"); err != nil {
-		log.Printf("media %d: failed to set Generating: %v", mediaID, err)
-		return
-	}
-
-	time.Sleep(3 * time.Second)
-	if err := h.updateStatus(mediaID, "Completed"); err != nil {
-		log.Printf("media %d: failed to set Completed: %v", mediaID, err)
-		return
-	}
-
-	log.Printf("media %d: processing completed", mediaID)
+	log.Printf("media %d: обробка FFmpeg завершена. Статус: Transcribing", mediaID)
 }
