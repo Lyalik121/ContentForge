@@ -231,5 +231,30 @@ func (h *MediaHandler) processMedia(mediaID int) {
 		return
 	}
 
-	log.Printf("media %d: обробка FFmpeg завершена. Статус: Transcribing", mediaID)
+	openAIKey := os.Getenv("OPENAI_API_KEY")
+	if openAIKey == "" {
+		log.Printf("media %d: помилка, OPENAI_API_KEY не вказано в .env", mediaID)
+		_ = h.updateStatus(mediaID, "Failed")
+		return
+	}
+
+	log.Printf("media %d: відправка аудіо до OpenAI Whisper API...", mediaID)
+
+	transcriptText, err := processor.TranscribeAudioWithRetry(audioPath, openAIKey)
+	if err != nil {
+		log.Printf("media %d: помилка транскрибації після всіх спроб: %v", mediaID, err)
+		_ = h.updateStatus(mediaID, "Failed")
+		return
+	}
+
+	txQuery := `INSERT INTO transcripts (media_file_id, raw_text) VALUES (@p1, @p2)`
+	_, err = h.db.Exec(txQuery, mediaID, transcriptText)
+	if err != nil {
+		log.Printf("media %d: помилка збереження транскрипту в БД: %v", mediaID, err)
+		_ = h.updateStatus(mediaID, "Failed")
+		return
+	}
+
+	_ = h.updateStatus(mediaID, "Transcribed")
+	log.Printf("media %d: обробка завершена! Текст успішно збережено, статус: Transcribed", mediaID)
 }
