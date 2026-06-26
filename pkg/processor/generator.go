@@ -19,14 +19,34 @@ type GeneratedPosts struct {
 const geminiModel = "gemini-3.1-flash-lite"
 const geminiURL = "https://generativelanguage.googleapis.com/v1beta/models/" + geminiModel + ":generateContent"
 
+const systemPrompt = `You are a social media content creator. 
+Based on the transcript provided by the user, generate one ready-to-publish post for each of these platforms: Instagram, TikTok, Threads, Telegram.
+
+Adapt the tone and length to each platform:
+- instagram: engaging, friendly, with relevant emojis and 3-5 hashtags.
+- tiktok: short, catchy, energetic, with a hook in the first line.
+- threads: short and conversational, casual tone, max 500 characters.
+- telegram: informative and clear, can be a bit longer, no hashtags needed.
+
+Write all posts in the SAME language as the transcript.
+
+Return your answer STRICTLY as a JSON object with EXACTLY these keys: "instagram", "tiktok", "threads", "telegram".
+Each value must be a non-empty string. Do NOT add any text, explanations, or markdown outside the JSON object.`
+
 type geminiRequest struct {
-	Contents []geminiContent `json:"contents"`
+	Contents          []geminiContent   `json:"contents"`
+	SystemInstruction *geminiContent    `json:"systemInstruction,omitempty"`
+	GenerationConfig  *generationConfig `json:"generationConfig,omitempty"`
 }
 type geminiContent struct {
 	Parts []geminiPart `json:"parts"`
 }
 type geminiPart struct {
 	Text string `json:"text"`
+}
+
+type generationConfig struct {
+	ResponseMimeType string `json:"responseMimeType"`
 }
 
 type geminiResponse struct {
@@ -86,4 +106,64 @@ func callGemini(prompt string) (string, error) {
 	}
 
 	return parsed.Candidates[0].Content.Parts[0].Text, nil
+}
+
+func GeneratePosts(transcript string) (*GeneratedPosts, error) {
+	apiKey := os.Getenv("GEMINI_API_KEY")
+	if apiKey == "" {
+		return nil, fmt.Errorf("GEMINI_API_KEY is not set in .env")
+	}
+
+	reqBody := geminiRequest{
+		SystemInstruction: &geminiContent{
+			Parts: []geminiPart{{Text: systemPrompt}},
+		},
+		Contents: []geminiContent{
+			{Parts: []geminiPart{{Text: transcript}}},
+		},
+		GenerationConfig: &generationConfig{
+			ResponseMimeType: "application/json", // force valid JSON output
+		},
+	}
+	jsonData, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build request JSON: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", geminiURL, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("x-goog-api-key", apiKey)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("request to Gemini failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("gemini returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var parsed geminiResponse
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return nil, fmt.Errorf("failed to parse Gemini envelope: %w", err)
+	}
+	if len(parsed.Candidates) == 0 || len(parsed.Candidates[0].Content.Parts) == 0 {
+		return nil, fmt.Errorf("gemini returned no content; raw body: %s", string(body))
+	}
+	rawPostsJSON := parsed.Candidates[0].Content.Parts[0].Text
+
+	var posts GeneratedPosts
+	if err := json.Unmarshal([]byte(rawPostsJSON), &posts); err != nil {
+		return nil, fmt.Errorf("failed to parse posts JSON: %w; raw: %s", err, rawPostsJSON)
+	}
+
+	return &posts, nil
 }
