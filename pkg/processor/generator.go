@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"strings"
+	"time"
 )
 
 type GeneratedPosts struct {
@@ -209,4 +211,27 @@ func validatePosts(p *GeneratedPosts) error {
 	}
 
 	return nil
+}
+
+func GeneratePostsWithRetry(transcript string) (*GeneratedPosts, error) {
+	maxRetries := 3
+	var lastErr error
+
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		posts, err := GeneratePosts(transcript)
+		if err == nil {
+			return posts, nil
+		}
+
+		lastErr = err
+		log.Printf("generation attempt %d/%d failed: %v", attempt, maxRetries, err)
+
+		if attempt < maxRetries {
+			wait := time.Duration(1<<attempt) * time.Second // 2s, 4s, 8s
+			log.Printf("retrying in %v...", wait)
+			time.Sleep(wait)
+		}
+	}
+
+	return nil, fmt.Errorf("all %d generation attempts failed; last error: %w", maxRetries, lastErr)
 }

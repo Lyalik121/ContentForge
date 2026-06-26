@@ -36,3 +36,15 @@ func TestGeneratePosts(t *testing.T) {
 	fmt.Println("\n=== THREADS ===\n", posts.Threads)
 	fmt.Println("\n=== TELEGRAM ===\n", posts.Telegram)
 }
+
+func TestGeneratePostsWithRetry(t *testing.T) {
+	_ = godotenv.Load("../../cmd/server/.env")
+
+	transcript := "Сьогодні поговоримо про користь ранкових пробіжок для здоровʼя та настрою."
+
+	posts, err := GeneratePostsWithRetry(transcript)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Println("=== THREADS ===\n", posts.Threads)
+}
