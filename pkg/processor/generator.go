@@ -63,41 +63,16 @@ type geminiResponse struct {
 }
 
 func callGemini(prompt string) (string, error) {
-	apiKey := os.Getenv("GEMINI_API_KEY")
-	if apiKey == "" {
-		return "", fmt.Errorf("GEMINI_API_KEY is not set in .env")
-	}
 
 	reqBody := geminiRequest{
 		Contents: []geminiContent{
 			{Parts: []geminiPart{{Text: prompt}}},
 		},
 	}
-	jsonData, err := json.Marshal(reqBody)
-	if err != nil {
-		return "", fmt.Errorf("failed to build request JSON: %w", err)
-	}
 
-	req, err := http.NewRequest("POST", geminiURL, bytes.NewBuffer(jsonData))
+	body, err := doGeminiRequest(reqBody)
 	if err != nil {
-		return "", fmt.Errorf("failed to create request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("x-goog-api-key", apiKey)
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("request to Gemini failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("failed to read response: %w", err)
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("gemini returned status %d: %s", resp.StatusCode, string(body))
+		return "", err
 	}
 
 	var parsed geminiResponse
@@ -112,10 +87,6 @@ func callGemini(prompt string) (string, error) {
 }
 
 func GeneratePosts(transcript string) (*GeneratedPosts, error) {
-	apiKey := os.Getenv("GEMINI_API_KEY")
-	if apiKey == "" {
-		return nil, fmt.Errorf("GEMINI_API_KEY is not set in .env")
-	}
 
 	reqBody := geminiRequest{
 		SystemInstruction: &geminiContent{
@@ -125,33 +96,13 @@ func GeneratePosts(transcript string) (*GeneratedPosts, error) {
 			{Parts: []geminiPart{{Text: transcript}}},
 		},
 		GenerationConfig: &generationConfig{
-			ResponseMimeType: "application/json", // force valid JSON output
+			ResponseMimeType: "application/json",
 		},
 	}
-	jsonData, err := json.Marshal(reqBody)
-	if err != nil {
-		return nil, fmt.Errorf("failed to build request JSON: %w", err)
-	}
 
-	req, err := http.NewRequest("POST", geminiURL, bytes.NewBuffer(jsonData))
+	body, err := doGeminiRequest(reqBody)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("x-goog-api-key", apiKey)
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("request to Gemini failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response: %w", err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("gemini returned status %d: %s", resp.StatusCode, string(body))
+		return nil, err
 	}
 
 	var parsed geminiResponse
@@ -234,4 +185,39 @@ func GeneratePostsWithRetry(transcript string) (*GeneratedPosts, error) {
 	}
 
 	return nil, fmt.Errorf("all %d generation attempts failed; last error: %w", maxRetries, lastErr)
+}
+
+func doGeminiRequest(reqBody geminiRequest) ([]byte, error) {
+	apiKey := os.Getenv("GEMINI_API_KEY")
+	if apiKey == "" {
+		return nil, fmt.Errorf("GEMINI_API_KEY is not set in .env")
+	}
+
+	jsonData, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build request JSON: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", geminiURL, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("x-goog-api-key", apiKey)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("request to Gemini failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("gemini returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	return body, nil
 }
