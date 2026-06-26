@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 )
 
 type GeneratedPosts struct {
@@ -165,5 +166,47 @@ func GeneratePosts(transcript string) (*GeneratedPosts, error) {
 		return nil, fmt.Errorf("failed to parse posts JSON: %w; raw: %s", err, rawPostsJSON)
 	}
 
+	if err := validatePosts(&posts); err != nil {
+		return nil, fmt.Errorf("validation failed: %w", err)
+	}
+
 	return &posts, nil
+}
+
+const (
+	instagramLimit = 2200
+	tiktokLimit    = 2200
+	threadsLimit   = 500
+	telegramLimit  = 4096
+)
+
+func validatePosts(p *GeneratedPosts) error {
+
+	if strings.TrimSpace(p.Instagram) == "" {
+		return fmt.Errorf("instagram post is empty")
+	}
+	if strings.TrimSpace(p.TikTok) == "" {
+		return fmt.Errorf("tiktok post is empty")
+	}
+	if strings.TrimSpace(p.Threads) == "" {
+		return fmt.Errorf("threads post is empty")
+	}
+	if strings.TrimSpace(p.Telegram) == "" {
+		return fmt.Errorf("telegram post is empty")
+	}
+
+	if len([]rune(p.Instagram)) > instagramLimit {
+		return fmt.Errorf("instagram post too long: %d chars (max %d)", len([]rune(p.Instagram)), instagramLimit)
+	}
+	if len([]rune(p.TikTok)) > tiktokLimit {
+		return fmt.Errorf("tiktok post too long: %d chars (max %d)", len([]rune(p.TikTok)), tiktokLimit)
+	}
+	if len([]rune(p.Threads)) > threadsLimit {
+		return fmt.Errorf("threads post too long: %d chars (max %d)", len([]rune(p.Threads)), threadsLimit)
+	}
+	if len([]rune(p.Telegram)) > telegramLimit {
+		return fmt.Errorf("telegram post too long: %d chars (max %d)", len([]rune(p.Telegram)), telegramLimit)
+	}
+
+	return nil
 }
