@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -263,5 +264,37 @@ func (h *MediaHandler) processMedia(mediaID int) {
 	}
 
 	_ = h.updateStatus(mediaID, "Transcribed")
-	log.Printf("media %d: обробка завершена! Текст успішно збережено, статус: Transcribed", mediaID)
+	log.Printf("media %d: транскрипт збережено, статус: Transcribed", mediaID)
+
+	if err := h.updateStatus(mediaID, "Generating"); err != nil {
+		log.Printf("media %d: не вдалося встановити статус Generating: %v", mediaID, err)
+		return
+	}
+	log.Printf("media %d: запуск генерації постів через Gemini...", mediaID)
+
+	posts, err := processor.GeneratePostsWithRetry(transcriptText)
+	if err != nil {
+		log.Printf("media %d: генерація постів провалилась: %v", mediaID, err)
+		_ = h.updateStatus(mediaID, "Failed")
+		return
+	}
+
+	postsJSON, err := json.Marshal(posts)
+	if err != nil {
+		log.Printf("media %d: не вдалося серіалізувати пости в JSON: %v", mediaID, err)
+		_ = h.updateStatus(mediaID, "Failed")
+		return
+	}
+
+	genQuery := `INSERT INTO generated_content (media_file_id, content_type, result_text)
+				 VALUES (@p1, @p2, @p3)`
+	_, err = h.db.Exec(genQuery, mediaID, "social_posts", string(postsJSON))
+	if err != nil {
+		log.Printf("media %d: помилка збереження постів у БД: %v", mediaID, err)
+		_ = h.updateStatus(mediaID, "Failed")
+		return
+	}
+
+	_ = h.updateStatus(mediaID, "Completed")
+	log.Printf("media %d: обробка повністю завершена! Статус: Completed", mediaID)
 }
