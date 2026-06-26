@@ -231,20 +231,27 @@ func (h *MediaHandler) processMedia(mediaID int) {
 		return
 	}
 
-	openAIKey := os.Getenv("OPENAI_API_KEY")
-	if openAIKey == "" {
-		log.Printf("media %d: помилка, OPENAI_API_KEY не вказано в .env", mediaID)
-		_ = h.updateStatus(mediaID, "Failed")
-		return
-	}
+	var transcriptText string
 
-	log.Printf("media %d: відправка аудіо до OpenAI Whisper API...", mediaID)
+	if os.Getenv("MOCK_TRANSCRIPTION") == "true" {
+		log.Printf("media %d: MOCK режим увімкнено — реальний виклик Whisper пропущено", mediaID)
+		transcriptText = "Це тестова транскрипція (mock). Виклик OpenAI пропущено."
+	} else {
+		openAIKey := os.Getenv("OPENAI_API_KEY")
+		if openAIKey == "" {
+			log.Printf("media %d: помилка, OPENAI_API_KEY не вказано в .env", mediaID)
+			_ = h.updateStatus(mediaID, "Failed")
+			return
+		}
 
-	transcriptText, err := processor.TranscribeAudioWithRetry(audioPath, openAIKey)
-	if err != nil {
-		log.Printf("media %d: помилка транскрибації після всіх спроб: %v", mediaID, err)
-		_ = h.updateStatus(mediaID, "Failed")
-		return
+		log.Printf("media %d: відправка аудіо до OpenAI Whisper API...", mediaID)
+
+		transcriptText, err = processor.TranscribeAudioWithRetry(audioPath, openAIKey)
+		if err != nil {
+			log.Printf("media %d: помилка транскрибації після всіх спроб: %v", mediaID, err)
+			_ = h.updateStatus(mediaID, "Failed")
+			return
+		}
 	}
 
 	txQuery := `INSERT INTO transcripts (media_file_id, raw_text) VALUES (@p1, @p2)`
