@@ -14,7 +14,7 @@ CREATE TABLE users (
 CREATE TABLE media_files (
     id INT IDENTITY(1,1) PRIMARY KEY,
     user_id INT FOREIGN KEY REFERENCES users(id),
-    file_name NVARCHAR(255) NOT NULL, -- ✅ Змінено з VARCHAR на NVARCHAR для укр мови в назвах файлів
+    file_name NVARCHAR(255) NOT NULL, 
     file_path VARCHAR(500) NOT NULL,
     status VARCHAR(50) NOT NULL DEFAULT 'Uploaded', 
     created_at DATETIME DEFAULT GETDATE(),
@@ -25,7 +25,7 @@ CREATE TABLE generation_requests (
     id INT IDENTITY(1,1) PRIMARY KEY,
     user_id INT FOREIGN KEY REFERENCES users(id),
     media_file_id INT FOREIGN KEY REFERENCES media_files(id),
-    prompt_modifier NVARCHAR(max), -- ✅ Змінено з VARCHAR на NVARCHAR для підтримки укр мови в промптах
+    prompt_modifier NVARCHAR(max), 
     created_at DATETIME DEFAULT GETDATE()
 );
 
@@ -38,7 +38,7 @@ CREATE TABLE transcripts (
 
 CREATE TABLE generated_content (
     id INT IDENTITY(1,1) PRIMARY KEY,
-    request_id INT FOREIGN KEY REFERENCES generation_requests(id), -- ✅ Прибрано UNIQUE! Тепер сценарій 1 з NULL працюватиме без дублікатів
+    request_id INT FOREIGN KEY REFERENCES generation_requests(id), 
     media_file_id INT FOREIGN KEY REFERENCES media_files(id),
     content_type VARCHAR(50),
     result_text NVARCHAR(max) NOT NULL,
