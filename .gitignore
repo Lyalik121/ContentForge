@@ -38,3 +38,6 @@ go.work.sum
 
 # Uploads files
 uploads/
+
+# Testing files
+req.json

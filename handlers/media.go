@@ -24,6 +24,54 @@ type MediaHandler struct {
 	db *sql.DB
 }
 
+type GenerateRequest struct {
+	Niche        string `json:"niche"`
+	Audience     string `json:"audience"`
+	Requirements string `json:"requirements"`
+}
+
+func (h *MediaHandler) Generate(c *fiber.Ctx) error {
+	var req GenerateRequest
+
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Invalid request body. Expected JSON with niche, audience, requirements.",
+		})
+	}
+
+	userIDFloat, ok := c.Locals("user_id").(float64)
+	if !ok {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Invalid user identity in token.",
+		})
+	}
+	userID := int(userIDFloat)
+
+	brief := fmt.Sprintf("Niche: %s\nAudience: %s\nRequirements: %s",
+		req.Niche, req.Audience, req.Requirements)
+
+	insertQuery := `INSERT INTO generation_requests (user_id, prompt_modifier)
+					OUTPUT INSERTED.id
+					VALUES (@p1, @p2)`
+
+	var requestID int
+	err := h.db.QueryRow(insertQuery, userID, brief).Scan(&requestID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Could not create generation request.",
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"status":     "success",
+		"request_id": requestID,
+		"brief":      brief,
+	})
+}
+
 func NewMediaHandler(database *sql.DB) *MediaHandler {
 	return &MediaHandler{db: database}
 }

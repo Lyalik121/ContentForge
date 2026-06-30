@@ -64,6 +64,8 @@ func main() {
 		})
 	})
 
+	api.Post("/generate", middleware.Protected(), mediaHandler.Generate)
+
 	fmt.Println("Сервер Fiber запускається на порту :3000...")
 	log.Fatal(app.Listen(":3000"))
 }
