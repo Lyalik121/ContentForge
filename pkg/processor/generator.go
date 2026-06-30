@@ -19,6 +19,12 @@ type GeneratedPosts struct {
 	Telegram  string `json:"telegram"`
 }
 
+type GeneratedScript struct {
+	Hook string `json:"hook"`
+	Body string `json:"body"`
+	CTA  string `json:"cta"`
+}
+
 const geminiModel = "gemini-3.1-flash-lite"
 const geminiURL = "https://generativelanguage.googleapis.com/v1beta/models/" + geminiModel + ":generateContent"
 
@@ -34,6 +40,19 @@ Adapt the tone and length to each platform:
 Write all posts in the SAME language as the transcript.
 
 Return your answer STRICTLY as a JSON object with EXACTLY these keys: "instagram", "tiktok", "threads", "telegram".
+Each value must be a non-empty string. Do NOT add any text, explanations, or markdown outside the JSON object.`
+
+const scriptSystemPrompt = `You are a short-form video scriptwriter (Shorts, Reels, TikTok).
+Based on the brief provided by the user (niche, audience, requirements), write a video script.
+
+Structure the script into three parts:
+- hook: the first 3 seconds — a punchy line that grabs attention immediately.
+- body: the main content the creator speaks on camera, clear and engaging.
+- cta: a call to action at the end (follow, comment, save, etc.).
+
+Write the script in the SAME language as the brief.
+
+Return your answer STRICTLY as a JSON object with EXACTLY these keys: "hook", "body", "cta".
 Each value must be a non-empty string. Do NOT add any text, explanations, or markdown outside the JSON object.`
 
 type geminiRequest struct {
@@ -185,6 +204,82 @@ func GeneratePostsWithRetry(transcript string) (*GeneratedPosts, error) {
 	}
 
 	return nil, fmt.Errorf("all %d generation attempts failed; last error: %w", maxRetries, lastErr)
+}
+
+func GenerateScript(brief string) (*GeneratedScript, error) {
+
+	reqBody := geminiRequest{
+		SystemInstruction: &geminiContent{
+			Parts: []geminiPart{{Text: scriptSystemPrompt}},
+		},
+		Contents: []geminiContent{
+			{Parts: []geminiPart{{Text: brief}}},
+		},
+		GenerationConfig: &generationConfig{
+			ResponseMimeType: "application/json",
+		},
+	}
+
+	body, err := doGeminiRequest(reqBody)
+	if err != nil {
+		return nil, err
+	}
+
+	var parsed geminiResponse
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return nil, fmt.Errorf("failed to parse Gemini envelope: %w", err)
+	}
+	if len(parsed.Candidates) == 0 || len(parsed.Candidates[0].Content.Parts) == 0 {
+		return nil, fmt.Errorf("gemini returned no content; raw body: %s", string(body))
+	}
+	rawScriptJSON := parsed.Candidates[0].Content.Parts[0].Text
+
+	var script GeneratedScript
+	if err := json.Unmarshal([]byte(rawScriptJSON), &script); err != nil {
+		return nil, fmt.Errorf("failed to parse script JSON: %w; raw: %s", err, rawScriptJSON)
+	}
+
+	if err := validateScript(&script); err != nil {
+		return nil, fmt.Errorf("validation failed: %w", err)
+	}
+
+	return &script, nil
+}
+
+func validateScript(s *GeneratedScript) error {
+	if strings.TrimSpace(s.Hook) == "" {
+		return fmt.Errorf("script hook is empty")
+	}
+	if strings.TrimSpace(s.Body) == "" {
+		return fmt.Errorf("script body is empty")
+	}
+	if strings.TrimSpace(s.CTA) == "" {
+		return fmt.Errorf("script cta is empty")
+	}
+	return nil
+}
+
+func GenerateScriptWithRetry(brief string) (*GeneratedScript, error) {
+	maxRetries := 3
+	var lastErr error
+
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		script, err := GenerateScript(brief)
+		if err == nil {
+			return script, nil
+		}
+
+		lastErr = err
+		log.Printf("script generation attempt %d/%d failed: %v", attempt, maxRetries, err)
+
+		if attempt < maxRetries {
+			wait := time.Duration(1<<attempt) * time.Second // 2s, 4s, 8s
+			log.Printf("retrying in %v...", wait)
+			time.Sleep(wait)
+		}
+	}
+
+	return nil, fmt.Errorf("all %d script generation attempts failed; last error: %w", maxRetries, lastErr)
 }
 
 func doGeminiRequest(reqBody geminiRequest) ([]byte, error) {

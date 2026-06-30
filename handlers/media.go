@@ -28,6 +28,7 @@ type GenerateRequest struct {
 	Niche        string `json:"niche"`
 	Audience     string `json:"audience"`
 	Requirements string `json:"requirements"`
+	ContentType  string `json:"content_type"`
 }
 
 func (h *MediaHandler) Generate(c *fiber.Ctx) error {
@@ -65,36 +66,54 @@ func (h *MediaHandler) Generate(c *fiber.Ctx) error {
 		})
 	}
 
-	posts, err := processor.GeneratePostsWithRetry(brief)
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"status":  "error",
-			"message": "Could not generate posts.",
-		})
+	var result interface{}
+	var contentType string
+
+	if req.ContentType == "script" {
+		script, err := processor.GenerateScriptWithRetry(brief)
+		if err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Could not generate script.",
+			})
+		}
+		result = script
+		contentType = "video_script"
+	} else {
+		posts, err := processor.GeneratePostsWithRetry(brief)
+		if err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"status":  "error",
+				"message": "Could not generate posts.",
+			})
+		}
+		result = posts
+		contentType = "social_posts"
 	}
 
-	postsJSON, err := json.Marshal(posts)
+	resultJSON, err := json.Marshal(result)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"status":  "error",
-			"message": "Could not serialize posts.",
+			"message": "Could not serialize result.",
 		})
 	}
 
 	genQuery := `INSERT INTO generated_content (request_id, content_type, result_text)
 				 VALUES (@p1, @p2, @p3)`
-	_, err = h.db.Exec(genQuery, requestID, "social_posts", string(postsJSON))
+	_, err = h.db.Exec(genQuery, requestID, contentType, string(resultJSON))
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"status":  "error",
-			"message": "Could not save generated posts.",
+			"message": "Could not save generated content.",
 		})
 	}
 
 	return c.JSON(fiber.Map{
-		"status":     "success",
-		"request_id": requestID,
-		"posts":      posts,
+		"status":       "success",
+		"request_id":   requestID,
+		"content_type": contentType,
+		"result":       result,
 	})
 }
 
