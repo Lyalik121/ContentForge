@@ -42,3 +42,4 @@ uploads/
 # Testing files
 req.json
 req_script.json
+req_ua.json
