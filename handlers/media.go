@@ -65,10 +65,36 @@ func (h *MediaHandler) Generate(c *fiber.Ctx) error {
 		})
 	}
 
+	posts, err := processor.GeneratePostsWithRetry(brief)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Could not generate posts.",
+		})
+	}
+
+	postsJSON, err := json.Marshal(posts)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Could not serialize posts.",
+		})
+	}
+
+	genQuery := `INSERT INTO generated_content (request_id, content_type, result_text)
+				 VALUES (@p1, @p2, @p3)`
+	_, err = h.db.Exec(genQuery, requestID, "social_posts", string(postsJSON))
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"status":  "error",
+			"message": "Could not save generated posts.",
+		})
+	}
+
 	return c.JSON(fiber.Map{
 		"status":     "success",
 		"request_id": requestID,
-		"brief":      brief,
+		"posts":      posts,
 	})
 }
 
