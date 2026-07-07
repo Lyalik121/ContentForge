@@ -42,6 +42,8 @@ uploads/
 # Testing files
 req.json
 req_script.json
+req_ua.json
+
 # ==========================================
 # Frontend (React / Vite / Tailwind)
 # ==========================================
