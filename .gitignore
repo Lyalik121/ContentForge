@@ -42,3 +42,23 @@ uploads/
 # Testing files
 req.json
 req_script.json
+# ==========================================
+# Frontend (React / Vite / Tailwind)
+# ==========================================
+
+# Ігноруємо встановлені пакети (найважливіше!)
+**/node_modules/
+node_modules/
+
+# Ігноруємо білд (папку готового сайту)
+**/dist/
+dist/
+
+# Ігноруємо тимчасовий кеш розробки Vite
+.vite/
+**/.vite-temp/
+
+# Логи помилок npm
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
