@@ -3,8 +3,11 @@ package processor
 import (
 	"database/sql"
 	"fmt"
+	"log"
+	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 )
 
 const ffmpegPath = "D:\\ffmpeg\\ffmpeg.exe"
@@ -61,4 +64,45 @@ func SplitAudio(audioPath, outputDir string) ([]string, error) {
 	}
 
 	return files, nil
+}
+
+const maxWhisperFileSize = 20 * 1024 * 1024
+
+func TranscribeLargeAudio(audioPath, chunkDir, apiKey string) (string, error) {
+	info, err := os.Stat(audioPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to stat audio file: %w", err)
+	}
+
+	if info.Size() <= maxWhisperFileSize {
+		return TranscribeAudioWithRetry(audioPath, apiKey)
+	}
+
+	if err := os.MkdirAll(chunkDir, 0755); err != nil {
+		return "", fmt.Errorf("failed to create chunk dir: %w", err)
+	}
+
+	chunks, err := SplitAudio(audioPath, chunkDir)
+	if err != nil {
+		return "", fmt.Errorf("failed to split audio: %w", err)
+	}
+	if len(chunks) == 0 {
+		return "", fmt.Errorf("split produced no chunks")
+	}
+
+	var parts []string
+	for i, chunk := range chunks {
+		log.Printf("transcribing chunk %d/%d: %s", i+1, len(chunks), chunk)
+		text, err := TranscribeAudioWithRetry(chunk, apiKey)
+		if err != nil {
+			return "", fmt.Errorf("chunk %d/%d failed: %w", i+1, len(chunks), err)
+		}
+		parts = append(parts, text)
+	}
+
+	if err := os.RemoveAll(chunkDir); err != nil {
+		log.Printf("warning: failed to clean up chunk dir %s: %v", chunkDir, err)
+	}
+
+	return strings.Join(parts, " "), nil
 }

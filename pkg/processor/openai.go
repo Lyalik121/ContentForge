@@ -26,7 +26,6 @@ func TranscribeAudioWithRetry(audioPath, apiKey string) (string, error) {
 			return text, nil
 		}
 
-		// Якщо це остання спроба — повертаємо помилку
 		if i == maxRetries-1 {
 			return "", fmt.Errorf("whisper api failed after %d retries: %w", maxRetries, err)
 		}
@@ -74,7 +73,7 @@ func SendToWhisper(audioPath, apiKey string) (string, error) {
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 
-	client := &http.Client{Timeout: 60 * time.Second}
+	client := &http.Client{Timeout: 300 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("network error during request: %w", err)

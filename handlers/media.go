@@ -316,7 +316,8 @@ func (h *MediaHandler) processMedia(mediaID int, requestID int) {
 		transcriptText = "Це автоматично згенерований контент конвеєра ContentForge."
 	} else {
 		openAIKey := os.Getenv("OPENAI_API_KEY")
-		transcriptText, err = processor.TranscribeAudioWithRetry(audioPath, openAIKey)
+		chunkDir := filepath.Join("uploads", fmt.Sprintf("chunks_%d", mediaID))
+		transcriptText, err = processor.TranscribeLargeAudio(audioPath, chunkDir, openAIKey)
 		if err != nil {
 			log.Printf("media %d: помилка транскрибації: %v", mediaID, err)
 			_ = h.updateStatus(mediaID, "Failed")
