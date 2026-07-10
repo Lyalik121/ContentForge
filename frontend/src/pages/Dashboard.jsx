@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 
-export default function Dashboard() {
+export default function Dashboard({ onNavigate }) {
   const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [mediaID, setMediaID] = useState(null);
@@ -121,12 +121,20 @@ export default function Dashboard() {
         <h1 className="text-3xl font-black tracking-wider bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent uppercase">
           ContentForge
         </h1>
-        <button 
-          onClick={handleLogout}
-          className="bg-gray-900 hover:bg-gray-800 text-gray-300 px-4 py-2 rounded-xl text-sm font-medium transition border border-gray-800 shadow-sm"
-        >
-          Вийти
-        </button>
+       <div className="flex items-center gap-2">
+          <button
+            onClick={() => onNavigate('scenario2')}
+            className="bg-indigo-950 hover:bg-indigo-900 text-indigo-300 px-4 py-2 rounded-xl text-sm font-medium transition border border-indigo-800 shadow-sm"
+          >
+            Генерація з нуля
+          </button>
+          <button 
+            onClick={handleLogout}
+            className="bg-gray-900 hover:bg-gray-800 text-gray-300 px-4 py-2 rounded-xl text-sm font-medium transition border border-gray-800 shadow-sm"
+          >
+            Вийти
+          </button>
+        </div>
       </div>
 
       <div className="w-full max-w-xl bg-gray-950 border border-gray-800 rounded-2xl p-6 shadow-2xl mb-8">
