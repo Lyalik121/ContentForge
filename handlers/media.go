@@ -20,6 +20,21 @@ import (
 
 const maxUploadSize = 500 * 1024 * 1024
 
+var allowedExts = map[string]bool{
+	".mp3":  true,
+	".mp4":  true,
+	".wav":  true,
+	".ogg":  true,
+	".oga":  true,
+	".m4a":  true,
+	".aac":  true,
+	".flac": true,
+	".webm": true,
+	".mov":  true,
+	".mkv":  true,
+	".avi":  true,
+}
+
 type MediaHandler struct {
 	db *sql.DB
 }
@@ -135,7 +150,15 @@ func (h *MediaHandler) Upload(c *fiber.Ctx) error {
 	headBytes := make([]byte, 512)
 	n, _ := src.Read(headBytes)
 	contentType := http.DetectContentType(headBytes[:n])
-	if !strings.HasPrefix(contentType, "audio/") && !strings.HasPrefix(contentType, "video/") {
+
+	isMedia := strings.HasPrefix(contentType, "audio/") || strings.HasPrefix(contentType, "video/")
+
+	if !isMedia && (contentType == "application/ogg" || contentType == "application/octet-stream") {
+		ext := strings.ToLower(filepath.Ext(fileHeader.Filename))
+		isMedia = allowedExts[ext]
+	}
+
+	if !isMedia {
 		return c.Status(fiber.StatusUnsupportedMediaType).JSON(fiber.Map{
 			"status":  "error",
 			"message": "Only audio and video files allowed.",
