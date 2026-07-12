@@ -22,11 +22,19 @@ func ConnectDB() *sql.DB {
 	password := os.Getenv("DB_PASSWORD")
 	dbname := os.Getenv("DB_NAME")
 
+	if host == "" {
+		host = "localhost"
+	}
 	if port == "" {
 		port = "1433"
-		host = "localhost"
+	}
+	if user == "" {
 		user = "sa"
+	}
+	if password == "" {
 		password = "YourStrong@Password123"
+	}
+	if dbname == "" {
 		dbname = "contentforge"
 	}
 
@@ -39,9 +47,10 @@ func ConnectDB() *sql.DB {
 	}
 
 	if err = db.Ping(); err != nil {
-		log.Fatal("База даних недоступна (Ping failed):", err)
+		fmt.Printf("УВАГА: База даних недоступна (%v). Але сервер продовжує запуск!\n", err)
+	} else {
+		fmt.Println("Успішно підключено до бази даних MS SQL!")
 	}
 
-	fmt.Println("Успішно підключено до бази даних MS SQL!")
 	return db
 }
