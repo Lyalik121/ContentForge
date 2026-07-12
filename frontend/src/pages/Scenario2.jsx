@@ -24,7 +24,7 @@ export default function Scenario2({ onLogout, onNavigate }) {
 
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch('http://localhost:3000/api/generate', {
+      const res = await fetch('https://contentforge-backend-mdzb.onrender.com/api/generate', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

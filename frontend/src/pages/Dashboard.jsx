@@ -20,7 +20,7 @@ export default function Dashboard({ onNavigate }) {
     const interval = setInterval(async () => {
       try {
         const token = localStorage.getItem('token');
-        const targetUrl = `http://localhost:3000/api/media/${mediaID}/status`;
+        const targetUrl = `https://contentforge-backend-mdzb.onrender.com/api/media/${mediaID}/status`;
         
         const res = await fetch(targetUrl, {
           method: 'GET',
@@ -88,7 +88,7 @@ export default function Dashboard({ onNavigate }) {
 
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch('http://localhost:3000/api/media/upload', {
+      const res = await fetch('https://contentforge-backend-mdzb.onrender.com/api/media/upload', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` },
         body: formData,
