@@ -10,15 +10,21 @@ import (
 	"strings"
 )
 
-const ffmpegPath = "D:\\ffmpeg\\ffmpeg.exe"
+func getFFmpegPath() string {
+	path := "ffmpeg"
+
+	if _, err := os.Stat(`D:\ffmpeg\ffmpeg.exe`); err == nil {
+		path = `D:\ffmpeg\ffmpeg.exe`
+	}
+	return path
+}
 
 func ProcessMedia(db *sql.DB, mediaID int, videoPath, outputPath, outputDir string) error {
 	if err := ExtractAudio(videoPath, outputPath); err != nil {
-		_, _ = db.Exec("UPDATE media_files SET status = 'Failed' WHERE id = @p1", mediaID)
+		_, _ = db.Exec("UPDATE media_files SET status = 'Failed' WHERE id = $1", mediaID)
 		return err
 	}
-
-	_, err := db.Exec("UPDATE media_files SET status = 'Transcribing' WHERE id = @p1", mediaID)
+	_, err := db.Exec("UPDATE media_files SET status = 'Transcribing' WHERE id = $1", mediaID)
 	if err != nil {
 		return fmt.Errorf("failed to update status to Transcribing: %w", err)
 	}
@@ -27,7 +33,7 @@ func ProcessMedia(db *sql.DB, mediaID int, videoPath, outputPath, outputDir stri
 }
 
 func ExtractAudio(videoPath, outputPath string) error {
-	cmd := exec.Command(ffmpegPath,
+	cmd := exec.Command(getFFmpegPath(),
 		"-i", videoPath,
 		"-vn",
 		"-acodec", "libmp3lame",
@@ -45,7 +51,7 @@ func ExtractAudio(videoPath, outputPath string) error {
 func SplitAudio(audioPath, outputDir string) ([]string, error) {
 	outputMask := filepath.Join(outputDir, "chunk_%03d.mp3")
 
-	cmd := exec.Command(ffmpegPath,
+	cmd := exec.Command(getFFmpegPath(),
 		"-i", audioPath,
 		"-f", "segment",
 		"-segment_time", "1200",
