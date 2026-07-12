@@ -71,7 +71,7 @@ func (h *MediaHandler) Generate(c *fiber.Ctx) error {
 	brief := fmt.Sprintf("Niche: %s\nAudience: %s\nRequirements: %s", req.Niche, req.Audience, req.Requirements)
 
 	var requestID int
-	insertQuery := `INSERT INTO generation_requests (user_id, prompt_modifier) OUTPUT INSERTED.id VALUES (@p1, @p2)`
+	insertQuery := `INSERT INTO generation_requests (user_id, prompt_modifier) VALUES ($1, $2) RETURNING id`
 	err := h.db.QueryRow(insertQuery, userID, brief).Scan(&requestID)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -113,7 +113,7 @@ func (h *MediaHandler) Generate(c *fiber.Ctx) error {
 		})
 	}
 
-	genQuery := `INSERT INTO generated_content (request_id, content_type, result_text) VALUES (@p1, @p2, @p3)`
+	genQuery := `INSERT INTO generated_content (request_id, content_type, result_text) VALUES ($1, $2, $3)`
 	_, err = h.db.Exec(genQuery, requestID, contentType, string(resultJSON))
 	if err != nil {
 		log.Printf("Помилка збереження тексту в generated_content: %v", err)
@@ -187,21 +187,23 @@ func (h *MediaHandler) Upload(c *fiber.Ctx) error {
 	userID := int(userIDFloat)
 
 	var requestID int
-	reqQuery := `INSERT INTO generation_requests (user_id, prompt_modifier) OUTPUT INSERTED.id VALUES (@p1, @p2)`
+	reqQuery := `INSERT INTO generation_requests (user_id, prompt_modifier) VALUES ($1, $2) RETURNING id`
 	err = h.db.QueryRow(reqQuery, userID, "Media Pipeline File: "+fileHeader.Filename).Scan(&requestID)
 	if err != nil {
 		os.Remove(destPath)
+		log.Printf("Помилка створення generation_request: %v", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"status":  "error",
 			"message": "Could not initiate pipeline request in DB.",
 		})
 	}
 
-	query := `INSERT INTO media_files (user_id, file_name, file_path, status) OUTPUT INSERTED.id VALUES (@p1, @p2, @p3, @p4)`
+	query := `INSERT INTO media_files (user_id, file_name, file_path, status) VALUES ($1, $2, $3, $4) RETURNING id`
 	var mediaID int
 	err = h.db.QueryRow(query, userID, fileHeader.Filename, destPath, "Uploaded").Scan(&mediaID)
 	if err != nil {
 		os.Remove(destPath)
+		log.Printf("Помилка створення media_file: %v", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"status":  "error",
 			"message": "Database error.",
@@ -227,7 +229,7 @@ func (h *MediaHandler) GetStatus(c *fiber.Ctx) error {
 	}
 
 	var mediaStatus string
-	query := `SELECT status FROM media_files WHERE id = @p1`
+	query := `SELECT status FROM media_files WHERE id = $1`
 	err = h.db.QueryRow(query, id).Scan(&mediaStatus)
 
 	if err == sql.ErrNoRows {
@@ -251,16 +253,17 @@ func (h *MediaHandler) GetStatus(c *fiber.Ctx) error {
 	if strings.ToLower(mediaStatus) == "completed" {
 		var resultText string
 		contentQuery := `
-			SELECT TOP 1 gc.result_text 
+			SELECT gc.result_text 
 			FROM generated_content gc
 			JOIN generation_requests gr ON gc.request_id = gr.id
-			JOIN media_files mf ON gr.user_id = mf.user_id AND gr.prompt_modifier = ('Media Pipeline File: ' + mf.file_name)
-			WHERE mf.id = @p1
-			ORDER BY gc.id DESC`
+			JOIN media_files mf ON gr.user_id = mf.user_id AND gr.prompt_modifier = ('Media Pipeline File: ' || mf.file_name)
+			WHERE mf.id = $1
+			ORDER BY gc.id DESC 
+			LIMIT 1`
 
 		err = h.db.QueryRow(contentQuery, id).Scan(&resultText)
 		if err != nil {
-			backupQuery := `SELECT TOP 1 result_text FROM generated_content WHERE content_type = 'social_posts' ORDER BY id DESC`
+			backupQuery := `SELECT result_text FROM generated_content WHERE content_type = 'social_posts' ORDER BY id DESC LIMIT 1`
 			err = h.db.QueryRow(backupQuery).Scan(&resultText)
 		}
 
@@ -307,7 +310,7 @@ func (h *MediaHandler) GetStatus(c *fiber.Ctx) error {
 }
 
 func (h *MediaHandler) updateStatus(mediaID int, status string) error {
-	query := `UPDATE media_files SET status = @p1 WHERE id = @p2`
+	query := `UPDATE media_files SET status = $1 WHERE id = $2`
 	_, err := h.db.Exec(query, status, mediaID)
 	return err
 }
@@ -315,7 +318,7 @@ func (h *MediaHandler) updateStatus(mediaID int, status string) error {
 func (h *MediaHandler) processMedia(mediaID int, requestID int) {
 	log.Printf("media %d: початковий запуск обробки", mediaID)
 	var videoPath string
-	err := h.db.QueryRow("SELECT file_path FROM media_files WHERE id = @p1", mediaID).Scan(&videoPath)
+	err := h.db.QueryRow("SELECT file_path FROM media_files WHERE id = $1", mediaID).Scan(&videoPath)
 	if err != nil {
 		log.Printf("media %d: помилка читання шляху файлу: %v", mediaID, err)
 		_ = h.updateStatus(mediaID, "Failed")
@@ -348,7 +351,7 @@ func (h *MediaHandler) processMedia(mediaID int, requestID int) {
 		}
 	}
 
-	_, _ = h.db.Exec(`INSERT INTO transcripts (media_file_id, raw_text) VALUES (@p1, @p2)`, mediaID, transcriptText)
+	_, _ = h.db.Exec(`INSERT INTO transcripts (media_file_id, raw_text) VALUES ($1, $2)`, mediaID, transcriptText)
 
 	_ = h.updateStatus(mediaID, "Generating")
 
@@ -361,13 +364,13 @@ func (h *MediaHandler) processMedia(mediaID int, requestID int) {
 
 	postsJSON, _ := json.Marshal(posts)
 
-	finalQuery := `INSERT INTO generated_content (request_id, content_type, result_text) VALUES (@p1, @p2, @p3)`
+	finalQuery := `INSERT INTO generated_content (request_id, content_type, result_text) VALUES ($1, $2, $3)`
 	_, err = h.db.Exec(finalQuery, requestID, "social_posts", string(postsJSON))
 	if err != nil {
 		log.Printf("media %d: КРИТИЧНА ПОМИЛКА SQL ПРИ ЗБЕРЕЖЕННІ ПОСТІВ: %v. Пробую зберегти через пряму назву.", mediaID, err)
 
 		var fallbackRequestID int
-		fallbackQuery := `SELECT TOP 1 gr.id FROM generation_requests gr JOIN media_files mf ON gr.user_id = mf.user_id AND gr.prompt_modifier = ('Media Pipeline File: ' + mf.file_name) WHERE mf.id = @p1 ORDER BY gr.id DESC`
+		fallbackQuery := `SELECT gr.id FROM generation_requests gr JOIN media_files mf ON gr.user_id = mf.user_id AND gr.prompt_modifier = ('Media Pipeline File: ' || mf.file_name) WHERE mf.id = $1 ORDER BY gr.id DESC LIMIT 1`
 		err = h.db.QueryRow(fallbackQuery, mediaID).Scan(&fallbackRequestID)
 		if err == nil {
 			_, err = h.db.Exec(finalQuery, fallbackRequestID, "social_posts", string(postsJSON))
