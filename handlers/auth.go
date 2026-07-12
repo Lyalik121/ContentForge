@@ -2,10 +2,9 @@ package handlers
 
 import (
 	"database/sql"
-	"log"
+	"fmt"
+	"strings"
 	"time"
-
-	"contentforge/models"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/golang-jwt/jwt/v5"
@@ -22,69 +21,94 @@ func NewAuthHandler(db *sql.DB) *AuthHandler {
 	return &AuthHandler{DB: db}
 }
 
-func (h *AuthHandler) Register(c *fiber.Ctx) error {
-	var dto models.RegisterDTO
+type RegisterDTO struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
 
+type LoginDTO struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
+func (h *AuthHandler) Register(c *fiber.Ctx) error {
+	var dto RegisterDTO
 	if err := c.BodyParser(&dto); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Невалідний JSON запиту"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Невалідний формат даних"})
 	}
 
+	dto.Email = strings.TrimSpace(strings.ToLower(dto.Email))
 	if dto.Email == "" || dto.Password == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Email та пароль обов'язкові для заповнення"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Email та пароль обов'язкові"})
+	}
+
+	var exists bool
+	err := h.DB.QueryRow("SELECT EXISTS(SELECT 1 FROM users WHERE email = $1)", dto.Email).Scan(&exists)
+	if err != nil {
+		fmt.Println("Помилка при пошуку користувача в БД:", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Помилка сервера"})
+	}
+	if exists {
+		return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": "Користувач з таким email вже існує"})
 	}
 
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(dto.Password), bcrypt.DefaultCost)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Помилка шифрування пароля"})
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Помилка шифрування"})
 	}
 
-	query := `INSERT INTO users (email, password) VALUES (?, ?);`
-	_, err = h.DB.ExecContext(c.Context(), query, dto.Email, string(hashedPassword))
+	_, err = h.DB.Exec("INSERT INTO users (email, password, created_at) VALUES ($1, $2, $3)", dto.Email, string(hashedPassword), time.Now())
 	if err != nil {
-		log.Println("Помилка при реєстрації в БД:", err)
-		return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": "Користувач із таким email вже зареєстрований або виникла помилка БД"})
+		fmt.Println("Помилка при реєстрації в БД:", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Помилка при збереженні в БД"})
 	}
 
-	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"message": "Користувача успішно зареєстровано!"})
+	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"status": "success", "message": "Користувача успішно створено"})
 }
 
 func (h *AuthHandler) Login(c *fiber.Ctx) error {
-	var dto models.LoginDTO
-
+	var dto LoginDTO
 	if err := c.BodyParser(&dto); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Невалідний JSON запиту"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Невалідний формат даних"})
 	}
 
-	var user models.User
+	dto.Email = strings.TrimSpace(strings.ToLower(dto.Email))
 
-	query := `SELECT id, email, password FROM users WHERE email = ?;`
-	err := h.DB.QueryRowContext(c.Context(), query, dto.Email).Scan(&user.ID, &user.Email, &user.PasswordHash)
+	var dbID int
+	var dbEmail string
+	var dbPassword string
 
-	if err == sql.ErrNoRows {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Невірний email або пароль"})
-	} else if err != nil {
-		log.Println("Помилка при пошуку користувача в БД:", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Помилка сервера при пошуку користувача"})
+	err := h.DB.QueryRow("SELECT id, email, password FROM users WHERE email = $1", dto.Email).Scan(&dbID, &dbEmail, &dbPassword)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Невірний email або пароль"})
+		}
+		fmt.Println("Помилка при пошуку користувача в БД:", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Помилка сервера"})
 	}
 
-	err = bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(dto.Password))
+	err = bcrypt.CompareHashAndPassword([]byte(dbPassword), []byte(dto.Password))
 	if err != nil {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Невірний email або пароль"})
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"user_id": user.ID,
-		"email":   user.Email,
-		"exp":     time.Now().Add(time.Hour * 24).Unix(),
+		"user_id": dbID,
+		"email":   dbEmail,
+		"exp":     time.Now().Add(time.Hour * 72).Unix(),
 	})
 
 	tokenString, err := token.SignedString(jwtSecret)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Не вдалося створити сесію (JWT)"})
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Не вдалося згенерувати токен"})
 	}
 
 	return c.JSON(fiber.Map{
-		"message": "Вхід успішний!",
-		"token":   tokenString,
+		"status": "success",
+		"token":  tokenString,
+		"user": fiber.Map{
+			"id":    dbID,
+			"email": dbEmail,
+		},
 	})
 }

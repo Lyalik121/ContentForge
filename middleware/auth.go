@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
@@ -13,33 +14,33 @@ func Protected() fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		authHeader := c.Get("Authorization")
 		if authHeader == "" {
-			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Доступ заборонено: відсутній токен"})
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Відсутній токен авторизації"})
 		}
 
-		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
-		if tokenString == authHeader {
+		parts := strings.Split(authHeader, " ")
+		if len(parts) != 2 || parts[0] != "Bearer" {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Невалідний формат токена"})
 		}
 
-		token, err := jwt.Parse(tokenString, func(t *jwt.Token) (interface{}, error) {
-			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-				return nil, jwt.ErrSignatureInvalid
+		tokenString := parts[1]
+		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, fmt.Errorf("непередбачений метод шифрування")
 			}
 			return jwtSecret, nil
 		})
 
 		if err != nil || !token.Valid {
-			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Токен недійсний або його термін дії вичерпано"})
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Невалідний або прострочений токен"})
 		}
 
-		if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
-			if userID, exists := claims["user_id"]; exists {
-				c.Locals("user_id", userID)
-			}
-			if email, exists := claims["email"]; exists {
-				c.Locals("email", email)
-			}
+		claims, ok := token.Claims.(jwt.MapClaims)
+		if !ok {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Не вдалося зчитати дані токена"})
 		}
+
+		c.Locals("user_id", claims["user_id"])
+		c.Locals("email", claims["email"])
 
 		return c.Next()
 	}
