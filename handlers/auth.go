@@ -38,11 +38,11 @@ func (h *AuthHandler) Register(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Помилка шифрування пароля"})
 	}
 
-	query := `INSERT INTO users (email, password_hash) VALUES (@p1, @p2);`
-	_, err = h.DB.ExecContext(c.Context(), query, sql.Named("p1", dto.Email), sql.Named("p2", string(hashedPassword)))
+	query := `INSERT INTO users (email, password) VALUES (?, ?);`
+	_, err = h.DB.ExecContext(c.Context(), query, dto.Email, string(hashedPassword))
 	if err != nil {
 		log.Println("Помилка при реєстрації в БД:", err)
-		return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": "Користувач із таким email вже зареєстрований"})
+		return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": "Користувач із таким email вже зареєстрований або виникла помилка БД"})
 	}
 
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"message": "Користувача успішно зареєстровано!"})
@@ -56,12 +56,14 @@ func (h *AuthHandler) Login(c *fiber.Ctx) error {
 	}
 
 	var user models.User
-	query := `SELECT id, email, password_hash FROM users WHERE email = @p1;`
-	err := h.DB.QueryRowContext(c.Context(), query, sql.Named("p1", dto.Email)).Scan(&user.ID, &user.Email, &user.PasswordHash)
+
+	query := `SELECT id, email, password FROM users WHERE email = ?;`
+	err := h.DB.QueryRowContext(c.Context(), query, dto.Email).Scan(&user.ID, &user.Email, &user.PasswordHash)
 
 	if err == sql.ErrNoRows {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Невірний email або пароль"})
 	} else if err != nil {
+		log.Println("Помилка при пошуку користувача в БД:", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Помилка сервера при пошуку користувача"})
 	}
 
