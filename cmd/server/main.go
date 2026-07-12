@@ -21,7 +21,7 @@ func main() {
 	})
 
 	app.Use(cors.New(cors.Config{
-		AllowOrigins: "http://localhost:5173, http://localhost:5174, http://localhost:5175",
+		AllowOrigins: "*",
 		AllowHeaders: "Origin, Content-Type, Accept, Authorization",
 		AllowMethods: "GET, POST, HEAD, PUT, DELETE, PATCH, OPTIONS",
 	}))
@@ -33,12 +33,12 @@ func main() {
 		c.Set("Content-Type", "text/html; charset=utf-8")
 
 		return c.SendString(`
-            <h1>🚀 Сервер ContentForge успішно працює!</h1>
-            <p>Доступні роути для перевірки:</p>
-            <ul>
-                <li><a href="/health">Перевірити статус сервера (/health)</a></li>
-            </ul>
-        `)
+			<h1>🚀 Сервер ContentForge успішно працює!</h1>
+			<p>Доступні роути для перевірки:</p>
+			<ul>
+				<li><a href="/health">Перевірити статус сервера (/health)</a></li>
+			</ul>
+		`)
 	})
 
 	app.Get("/health", func(c *fiber.Ctx) error {
