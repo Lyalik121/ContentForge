@@ -57,7 +57,7 @@ func (h *AuthHandler) Register(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Помилка шифрування"})
 	}
 
-	_, err = h.DB.Exec("INSERT INTO users (email, password, created_at) VALUES ($1, $2, $3)", dto.Email, string(hashedPassword), time.Now())
+	_, err = h.DB.Exec("INSERT INTO users (email, password_hash, created_at) VALUES ($1, $2, $3)", dto.Email, string(hashedPassword), time.Now())
 	if err != nil {
 		fmt.Println("Помилка при реєстрації в БД:", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Помилка при збереженні в БД"})
@@ -78,7 +78,7 @@ func (h *AuthHandler) Login(c *fiber.Ctx) error {
 	var dbEmail string
 	var dbPassword string
 
-	err := h.DB.QueryRow("SELECT id, email, password FROM users WHERE email = $1", dto.Email).Scan(&dbID, &dbEmail, &dbPassword)
+	err := h.DB.QueryRow("SELECT id, email, password_hash FROM users WHERE email = $1", dto.Email).Scan(&dbID, &dbEmail, &dbPassword)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Невірний email або пароль"})
