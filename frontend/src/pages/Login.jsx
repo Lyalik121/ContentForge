@@ -21,7 +21,7 @@ export default function Auth() {
 
     setLoading(true);
     const endpoint = isLoginMode ? '/api/auth/login' : '/api/auth/register';
-    const targetUrl = `http://localhost:3000${endpoint}`;
+    const targetUrl = `https://contentforge-backend-mdzb.onrender.com${endpoint}`;
 
     try {
       const res = await fetch(targetUrl, {
