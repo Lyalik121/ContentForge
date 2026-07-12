@@ -33,7 +33,6 @@ func Protected() fiber.Handler {
 		}
 
 		if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
-
 			if userID, exists := claims["user_id"]; exists {
 				c.Locals("user_id", userID)
 			}
