@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 
-export default function Dashboard({ onNavigate }) {
+export default function Dashboard({ onNavigate, onLogout }) {
   const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [mediaID, setMediaID] = useState(null);
@@ -70,8 +70,9 @@ export default function Dashboard({ onNavigate }) {
   }, [mediaID]);
 
   const handleLogout = () => {
-    localStorage.removeItem('token');
-    window.location.href = '/login';
+  if (typeof onLogout === 'function') {
+    onLogout();
+  }
   };
 
   const handleUpload = async () => {
